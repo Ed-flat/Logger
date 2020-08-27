@@ -1,5 +1,6 @@
 package parser;
 
+import java.io.*;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -15,12 +16,8 @@ public class LogInvestigator {
     public static void main(String[] args) {
 
         LocalDateTime start = LocalDateTime.now();
-        List<String> textsOriginal = new ArrayList<>();
-        textsOriginal.add("01-01-2012 19:45:00 Naomi C. is getting into the car");
-        textsOriginal.add("01-01-2012 20:12:39 Naomi is eating at a restaurant");
-        textsOriginal.add("02-01-2012 09:13:15 George II is getting into the car");
-        textsOriginal.add("02-01-2012 10:14:00 George is eating at a diner");
-        textsOriginal.add("03-01-2012 10:14:00 Naomi is eating at a diner");
+
+        List<String> textsOriginal = readFromLog();
 
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MM-dd-yyyy HH:mm:ss");
         List<String> texts  = new ArrayList<>(textsOriginal);
@@ -40,34 +37,44 @@ public class LogInvestigator {
         }
 
         Map<String, String> occurencesMap = new HashMap();
+        Set<String> sequences = new HashSet<>();
+        boolean isChanged = false;
 
-        while (!texts.isEmpty() ) {
-            AtomicReference<String> longest = new AtomicReference<>("");
+        do {
             for (String textStr : texts) {
-
-                longest.set("");
+                isChanged = false;
+                AtomicReference<String> longest = new AtomicReference<>("");
                 texts.forEach(text -> {
 
                     if (!text.equals(textStr)) {
                         String sequence = findLCS(text, textStr);
-                        if (sequence.length() > longest.get().length() && !Character.isUpperCase(sequence.charAt(0)))
+                        if (sequence.length() > longest.get().length() && !Character.isUpperCase(sequence.charAt(0)) && textStr.endsWith(sequence))
                             longest.set(sequence);
                     }
                 });
-            }
 
+                if (!sequences.contains(longest.get()) && !longest.get().isEmpty()) {
+                    sequences.add(longest.get());
+                    isChanged = true;
+                }
+            }
+        }
+        while (isChanged);
+
+        for (String sequence : sequences) {
             StringBuffer message = new StringBuffer(MESSAGE_PREFIX);
             texts.removeIf(text -> {
-                if (text.contains(longest.get())) {
-                    String[] words = text.split(longest.get());
+                if (text.contains(sequence)) {
+                    String[] words = text.split(sequence);
                     message.append(words[0] + ", ");
                     return true;
                 }
                 return false;
             });
 
-            occurencesMap.put(longest.get() , message.deleteCharAt(message.length()-2).toString());
+            occurencesMap.put(sequence , message.deleteCharAt(message.length()-2).toString());
         }
+
         occurencesMap.forEach((sequence, message) -> {
             int found = 0;
             int occ = message.split(", ").length;
@@ -76,8 +83,10 @@ public class LogInvestigator {
                     if (original.contains(sequence)){
                         System.out.println(original);
                         found++;
-                        if (found == occ)
+                        if (found == occ) {
                             System.out.println(message);
+                            System.out.println("===============================");
+                        }
                     }
                 }
             }
@@ -86,6 +95,36 @@ public class LogInvestigator {
 
         System.out.println("Parsing took: " + ChronoUnit.MILLIS.between(start, LocalDateTime.now()) + " msec");
 
+    }
+
+    private static List<String>  readFromLog() {
+        List<String> logs = new ArrayList<>();
+        InputStream inputStream = null;
+        try {
+            File file = new File(LogInvestigator.class.getClassLoader().getResource("spyLog.txt").getFile());
+            inputStream = new FileInputStream(file);
+
+            BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
+            String line = reader.readLine();
+            while (line != null) {
+                logs.add(line);
+                line = reader.readLine();
+            }
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            if (inputStream != null) {
+                try {
+                    inputStream.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+
+        return logs;
     }
 
     public static String findLCS(String str1, String str2) {
